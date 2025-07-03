@@ -1,13 +1,52 @@
 import { neon } from "@neondatabase/serverless"
 
-// Use the Neon NEON_DATABASE_URL you provided
-const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
-
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL environment variable is not set")
+// Get database URL from environment variables
+const getDatabaseUrl = () => {
+  return process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL
 }
 
-const sql = neon(databaseUrl)
+let sql: ReturnType<typeof neon> | null = null
+
+export const initializeDatabase = () => {
+  const databaseUrl = getDatabaseUrl()
+
+  if (!databaseUrl) {
+    console.warn("No database URL found in environment variables")
+    return null
+  }
+
+  try {
+    sql = neon(databaseUrl)
+    console.log("Database connection initialized successfully")
+    return sql
+  } catch (error) {
+    console.error("Failed to initialize database connection:", error)
+    return null
+  }
+}
+
+export const getDatabase = () => {
+  if (!sql) {
+    sql = initializeDatabase()
+  }
+  return sql
+}
+
+export const executeQuery = async (query: string, params: any[] = []) => {
+  const db = getDatabase()
+
+  if (!db) {
+    throw new Error("Database connection not available")
+  }
+
+  try {
+    const result = await db(query, params)
+    return result
+  } catch (error) {
+    console.error("Database query failed:", error)
+    throw error
+  }
+}
 
 export interface Conversion {
   id: string
@@ -61,7 +100,11 @@ export class DatabaseService {
     file_size: number
     conversion_mode: "debug" | "sandbox" | "combined"
   }): Promise<Conversion> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       INSERT INTO conversions (session_id, original_filename, file_size, conversion_mode)
       VALUES (${data.session_id}, ${data.original_filename}, ${data.file_size}, ${data.conversion_mode})
       RETURNING *
@@ -70,7 +113,11 @@ export class DatabaseService {
   }
 
   static async updateConversion(id: string, updates: Partial<Conversion>): Promise<Conversion> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       UPDATE conversions 
       SET status = ${updates.status}, 
           download_url = ${updates.download_url}, 
@@ -83,14 +130,22 @@ export class DatabaseService {
   }
 
   static async getConversion(id: string): Promise<Conversion | null> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       SELECT * FROM conversions WHERE id = ${id}
     `
     return (result[0] as Conversion) || null
   }
 
   static async getConversionsBySession(sessionId: string): Promise<Conversion[]> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       SELECT * FROM conversions 
       WHERE session_id = ${sessionId}
       ORDER BY created_at DESC
@@ -105,7 +160,11 @@ export class DatabaseService {
     source: string
     metadata?: Record<string, any>
   }): Promise<SystemLog> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       INSERT INTO system_logs (level, message, source, metadata)
       VALUES (${data.level}, ${data.message}, ${data.source}, ${JSON.stringify(data.metadata || {})})
       RETURNING *
@@ -121,6 +180,10 @@ export class DatabaseService {
       offset?: number
     } = {},
   ): Promise<SystemLog[]> {
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
     const { level, source, limit = 100, offset = 0 } = options
 
     let whereClause = "WHERE 1=1"
@@ -146,7 +209,7 @@ export class DatabaseService {
 
     params.push(limit, offset)
 
-    const result = await sql(query, ...params)
+    const result = await db(query, ...params)
     return result as SystemLog[]
   }
 
@@ -157,7 +220,11 @@ export class DatabaseService {
     content: string
     metadata?: Record<string, any>
   }): Promise<ChatMessage> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       INSERT INTO chat_history (session_id, role, content, metadata)
       VALUES (${data.session_id}, ${data.role}, ${data.content}, ${JSON.stringify(data.metadata || {})})
       RETURNING *
@@ -166,7 +233,11 @@ export class DatabaseService {
   }
 
   static async getChatHistory(sessionId: string, limit = 50): Promise<ChatMessage[]> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       SELECT * FROM chat_history 
       WHERE session_id = ${sessionId}
       ORDER BY created_at ASC
@@ -182,7 +253,11 @@ export class DatabaseService {
     description: string
     suggested_fix?: string
   }): Promise<DetectedIssue> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       INSERT INTO detected_issues (issue_type, severity, description, suggested_fix)
       VALUES (${data.issue_type}, ${data.severity}, ${data.description}, ${data.suggested_fix})
       RETURNING *
@@ -198,7 +273,11 @@ export class DatabaseService {
       resolved_at?: string
     },
   ): Promise<DetectedIssue> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       UPDATE detected_issues 
       SET status = ${updates.status}, 
           auto_fix_applied = ${updates.auto_fix_applied},
@@ -210,7 +289,11 @@ export class DatabaseService {
   }
 
   static async getActiveIssues(): Promise<DetectedIssue[]> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       SELECT * FROM detected_issues 
       WHERE status IN ('detected', 'fixing')
       ORDER BY severity DESC, created_at DESC
@@ -220,7 +303,11 @@ export class DatabaseService {
 
   // Cleanup operations
   static async cleanupExpiredRecords(): Promise<number> {
-    const result = await sql`
+    const db = getDatabase()
+    if (!db) {
+      throw new Error("Database connection not available")
+    }
+    const result = await db`
       DELETE FROM conversions 
       WHERE expires_at < NOW()
       RETURNING COUNT(*) as deleted_count
@@ -231,7 +318,11 @@ export class DatabaseService {
   // Health check
   static async healthCheck(): Promise<{ status: string; timestamp: string }> {
     try {
-      const result = await sql`SELECT NOW() as timestamp`
+      const db = getDatabase()
+      if (!db) {
+        return { status: "error", message: "Database connection not available" }
+      }
+      const result = await db`SELECT NOW() as timestamp`
       return {
         status: "healthy",
         timestamp: result[0].timestamp,
@@ -241,8 +332,6 @@ export class DatabaseService {
     }
   }
 }
-
-export { sql }
 
 // Named exports for backward compatibility
 export async function createConversion(data: {
@@ -269,4 +358,21 @@ export async function logRuntimeEvent(
     source: "runtime",
     metadata,
   })
+}
+
+export const checkDatabaseHealth = async () => {
+  try {
+    const db = getDatabase()
+    if (!db) {
+      return { status: "error", message: "Database connection not available" }
+    }
+
+    await db`SELECT 1`
+    return { status: "healthy", message: "Database connection successful" }
+  } catch (error) {
+    return {
+      status: "error",
+      message: `Database health check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    }
+  }
 }

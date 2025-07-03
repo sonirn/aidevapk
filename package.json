@@ -46,6 +46,7 @@
     "@vitejs/plugin-react": "latest",
     "adm-zip": "latest",
     "ai": "latest",
+    "autoprefixer": "^10.4.20",
     "bufferutil": "latest",
     "child_process": "latest",
     "class-variance-authority": "^0.7.1",
@@ -67,6 +68,7 @@
     "next": "15.2.4",
     "next-themes": "latest",
     "path": "latest",
+    "postcss": "^8.4.47",
     "react": "^19",
     "react-day-picker": "latest",
     "react-dom": "^19",
@@ -79,6 +81,7 @@
     "stylus": "latest",
     "sugarss": "latest",
     "tailwind-merge": "^2.5.5",
+    "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "terser": "latest",
     "tsx": "latest",
@@ -94,14 +97,19 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/eslint": "^9",
+    "@types/express": "^4.17.21",
+    "@types/fs-extra": "^11.0.4",
+    "@types/multer": "^1.4.11",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^9.0.8",
+    "@types/xml2js": "^0.4.14",
     "eslint": "^8",
     "eslint-config-next": "15.1.0",
     "postcss": "^8.5",
-    "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
 }
