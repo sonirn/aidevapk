@@ -394,11 +394,11 @@ async function createPremiumResources(mode: string, clientId: string): Promise<B
     <string name="test_product_refunded">android.test.refunded</string>
     
     <!-- Premium URLs and Endpoints -->
-    <string name="premium_api_url">https://premium-api.localhost</string>
-    <string name="license_check_url">https://license.localhost</string>
-    <string name="billing_api_url">https://billing.localhost</string>
-    <string name="subscription_api_url">https://subscription.localhost</string>
-    <string name="validation_api_url">https://validation.localhost</string>
+    <string name="premium_api_url">https://v0-aiapktodev.vercel.app/api</string>
+    <string name="license_check_url">https://v0-aiapktodev.vercel.app/api/license</string>
+    <string name="billing_api_url">https://v0-aiapktodev.vercel.app/api/billing</string>
+    <string name="subscription_api_url">https://v0-aiapktodev.vercel.app/api/subscription</string>
+    <string name="validation_api_url">https://v0-aiapktodev.vercel.app/api/validation</string>
     
     <!-- Build and Conversion Information -->
     <string name="build_type">premium_${mode}</string>

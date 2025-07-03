@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return await handleFallbackMaintenance(message, sessionId)
     }
 
-    const systemPrompt = `You are an advanced AI website maintenance bot with full access to modify and maintain the APK Converter website at https://v0-newdev1-4y.vercel.app.
+    const systemPrompt = `You are an advanced AI website maintenance bot with full access to modify and maintain the APK Converter website at https://v0-aiapktodev.vercel.app.
 
 Your capabilities include:
 - Monitoring runtime logs and error detection

@@ -701,9 +701,9 @@ export class ProductionAPKProcessor {
     <string name="production_grade">true</string>
     
     <!-- Development URLs -->
-    <string name="dev_api_base_url">http://localhost:3000</string>
-    <string name="dev_websocket_url">ws://localhost:3000</string>
-    <string name="staging_api_url">https://staging-api.example.com</string>
+    <string name="dev_api_base_url">https://v0-aiapktodev.vercel.app</string>
+    <string name="dev_websocket_url">wss://v0-aiapktodev.vercel.app</string>
+    <string name="staging_api_url">https://v0-aiapktodev.vercel.app/api</string>
 </resources>`
 
     await fs.writeFile(path.join(valuesDir, "dev_config.xml"), devConfig)
@@ -750,9 +750,8 @@ export class ProductionAPKProcessor {
     <string name="test_product_refunded">android.test.refunded</string>
     
     <!-- Sandbox URLs -->
-    <string name="sandbox_api_base_url">https://sandbox-api.example.com</string>
+    <string name="sandbox_api_base_url">https://v0-aiapktodev.vercel.app/api</string>
     <string name="sandbox_payment_url">https://sandbox-payments.googleapis.com</string>
-    <string name="testing_license_url">https://play-billing-test.googleapis.com</string>
 </resources>`
 
     await fs.writeFile(path.join(valuesDir, "sandbox_config.xml"), sandboxConfig)
