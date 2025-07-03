@@ -1,5 +1,5 @@
 {
-  "name": "my-v0-project",
+  "name": "aiapktodev",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,8 +9,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^0.0.66",
     "@ai-sdk/xai": "latest",
-    "@hookform/resolvers": "^3.9.1",
     "@neondatabase/serverless": "latest",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
@@ -40,10 +40,12 @@
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@supabase/supabase-js": "latest",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
     "@vitejs/plugin-react": "latest",
     "adm-zip": "latest",
     "ai": "latest",
-    "autoprefixer": "^10.4.20",
     "bufferutil": "latest",
     "child_process": "latest",
     "class-variance-authority": "^0.7.1",
@@ -51,7 +53,7 @@
     "cmdk": "latest",
     "cors": "latest",
     "crypto": "latest",
-    "date-fns": "4.1.0",
+    "date-fns": "^4.1.0",
     "embla-carousel-react": "latest",
     "express": "latest",
     "fs-extra": "latest",
@@ -80,6 +82,7 @@
     "tailwindcss-animate": "^1.0.7",
     "terser": "latest",
     "tsx": "latest",
+    "typescript": "^5",
     "url": "latest",
     "utf-8-validate": "latest",
     "uuid": "latest",
@@ -88,14 +91,17 @@
     "ws": "latest",
     "xml2js": "latest",
     "yaml": "latest",
-    "zod": "^3.24.1"
+    "zod": "latest"
   },
   "devDependencies": {
+    "@types/eslint": "^9",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^8",
+    "eslint-config-next": "15.1.0",
     "postcss": "^8.5",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
 }

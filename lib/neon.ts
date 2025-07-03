@@ -1,10 +1,13 @@
 import { neon } from "@neondatabase/serverless"
 
-if (!process.env.DATABASE_URL) {
+// Use the Neon NEON_DATABASE_URL you provided
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
+
+if (!databaseUrl) {
   throw new Error("DATABASE_URL environment variable is not set")
 }
 
-const sql = neon(process.env.DATABASE_URL)
+const sql = neon(databaseUrl)
 
 export interface Conversion {
   id: string
