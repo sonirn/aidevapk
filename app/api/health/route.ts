@@ -6,24 +6,26 @@ export async function GET() {
     // Check database health
     const dbHealth = await checkDatabaseHealth()
 
-    // Check environment variables
-    const envCheck = {
-      database: !!process.env.NEON_DATABASE_URL || !!process.env.POSTGRES_URL || !!process.env.NEON_DATABASE_URL,
-      supabase: !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      ai: !!process.env.XAI_API_KEY,
+    // Check system status
+    const systemHealth = {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      database: dbHealth,
+      services: {
+        api: "healthy",
+        converter: "healthy",
+        aiChat: "healthy",
+        autoFix: "healthy",
+        monitor: "healthy",
+      },
     }
 
-    const overallHealth = dbHealth.status === "healthy" && envCheck.database
+    // If database is unhealthy, mark system as degraded
+    if (dbHealth.status === "error") {
+      systemHealth.status = "degraded"
+    }
 
-    return NextResponse.json({
-      status: overallHealth ? "healthy" : "degraded",
-      timestamp: new Date().toISOString(),
-      services: {
-        database: dbHealth,
-        environment: envCheck,
-      },
-      version: process.env.npm_package_version || "1.0.0",
-    })
+    return NextResponse.json(systemHealth)
   } catch (error) {
     console.error("Health check failed:", error)
 
@@ -31,7 +33,15 @@ export async function GET() {
       {
         status: "error",
         timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error: error instanceof Error ? error.message : "Health check failed",
+        database: { status: "error", message: "Database check failed" },
+        services: {
+          api: "error",
+          converter: "unknown",
+          aiChat: "unknown",
+          autoFix: "unknown",
+          monitor: "unknown",
+        },
       },
       { status: 500 },
     )

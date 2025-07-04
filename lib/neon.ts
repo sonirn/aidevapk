@@ -1,23 +1,15 @@
 import { neon } from "@neondatabase/serverless"
 
-// Get database URL from environment variables
-const getDatabaseUrl = () => {
-  return process.env.NEON_NEON_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL
-}
+// Direct database URL - no more environment variable confusion
+const NEON_NEON_DATABASE_URL =
+  "postgres://neondb_owner:npg_z0pMl7xBowTN@ep-lively-silence-adxk103r-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
 let sql: ReturnType<typeof neon> | null = null
 
 export const initializeDatabase = () => {
-  const databaseUrl = getDatabaseUrl()
-
-  if (!databaseUrl) {
-    console.warn("No database URL found in environment variables")
-    return null
-  }
-
   try {
-    sql = neon(databaseUrl)
-    console.log("Database connection initialized successfully")
+    sql = neon(NEON_DATABASE_URL)
+    console.log("Database connection initialized successfully with direct URL")
     return sql
   } catch (error) {
     console.error("Failed to initialize database connection:", error)
