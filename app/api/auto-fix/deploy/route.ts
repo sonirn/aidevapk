@@ -5,7 +5,7 @@ import { neon } from "@neondatabase/serverless"
 // Initialize database connection with error handling
 let sql
 try {
-  sql = neon(process.env.NEON_DATABASE_URL!) // Fixed: removed duplicate NEON_
+  sql = neon(process.env.NEON_NEON_DATABASE_URL!) // Fixed: removed duplicate NEON_
 } catch (err) {
   console.error("❌ Failed to initialize database connection:", err)
 }
