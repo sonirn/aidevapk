@@ -386,7 +386,7 @@ function extractFixItems(text: string): string[] {
     .slice(0, 12)
 }
 
-// Keep all your existing helper functions (applyDatabaseFix, applyAPIFix, etc.)
+// Complete all the helper functions
 async function applyDatabaseFix(change: string) {
   try {
     if (change.toLowerCase().includes("index")) {
@@ -405,4 +405,8 @@ async function applyDatabaseFix(change: string) {
   }
 }
 
-async function applyAPIFix(
+async function applyAPIFix(change: string) {
+  try {
+    // Example API optimization
+    if (change.toLowerCase().includes("timeout")) {
+      return {
