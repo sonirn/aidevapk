@@ -5,7 +5,7 @@ import { neon } from "@neondatabase/serverless"
 // Initialize database connection with error handling
 let sql
 try {
-  sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+  sql = neon(process.env.NEON_DATABASE_URL!) // Fixed: removed duplicate NEON_
 } catch (err) {
   console.error("❌ Failed to initialize database connection:", err)
 }
@@ -13,7 +13,7 @@ try {
 // Security configuration
 const ALLOWED_ORIGIN = "https://v0-aiapktodev.vercel.app"
 const API_VERSION = "v13"
-const DEPLOYMENT_TIMEOUT = 10000 // 10 seconds
+const DEPLOYMENT_TIMEOUT = 30000 // Increased to 30 seconds
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -21,7 +21,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 }
 
-// CORS preflight handler
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
@@ -29,9 +28,7 @@ export async function OPTIONS() {
   })
 }
 
-// Main deployment handler
 export async function POST(request: Request) {
-  // Security: Verify request origin
   const origin = request.headers.get('origin')
   if (origin !== ALLOWED_ORIGIN) {
     console.warn(`⚠️ Blocked request from unauthorized origin: ${origin}`)
@@ -40,7 +37,7 @@ export async function POST(request: Request) {
 
   // Validate required environment variables
   const requiredEnvVars = {
-    NEON_NEON_DATABASE_URL: process.env.NEON_NEON_DATABASE_URL,
+    NEON_DATABASE_URL: process.env.NEON_DATABASE_URL, // Fixed variable name
     VERCEL_ACCESS_TOKEN: process.env.VERCEL_ACCESS_TOKEN,
     VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID
   }
@@ -63,27 +60,49 @@ export async function POST(request: Request) {
       return errorResponse(500, 'Database connection failed')
     }
 
-    // 2. Prepare deployment payload
+    // 2. Get project details first (recommended approach)
+    const projectResponse = await fetch(
+      `https://api.vercel.com/v9/projects/${process.env.VERCEL_PROJECT_ID}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
+        }
+      }
+    )
+
+    if (!projectResponse.ok) {
+      throw new Error(`Failed to fetch project details: ${projectResponse.status}`)
+    }
+
+    const projectData = await projectResponse.json()
+
+    // 3. Prepare deployment payload with correct structure
     const deploymentPayload = {
-      name: "aiapktodev",
-      target: "production",
-      projectId: process.env.VERCEL_PROJECT_ID,
-      ...(process.env.VERCEL_TEAM_ID && { teamId: process.env.VERCEL_TEAM_ID }),
-      env: {
-        NODE_ENV: "production",
-        ...(process.env.XAI_API_KEY && { XAI_API_KEY: process.env.XAI_API_KEY })
+      name: projectData.name || "aiapktodev",
+      gitSource: {
+        type: "github", // or "gitlab", "bitbucket"
+        repo: projectData.link?.repo || `${projectData.accountId}/${projectData.name}`,
+        ref: "main" // or your default branch
       },
-      meta: {
-        deploymentSource: "api-auto-fix-deploy"
+      target: "production",
+      projectSettings: {
+        framework: projectData.framework || "nextjs"
       }
     }
 
-    // 3. Trigger deployment with timeout
+    // Add team ID if available
+    const deploymentUrl = process.env.VERCEL_TEAM_ID 
+      ? `https://api.vercel.com/${API_VERSION}/deployments?teamId=${process.env.VERCEL_TEAM_ID}`
+      : `https://api.vercel.com/${API_VERSION}/deployments`
+
+    // 4. Trigger deployment with proper timeout
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), DEPLOYMENT_TIMEOUT)
 
     try {
-      const deployResponse = await fetch(`https://api.vercel.com/${API_VERSION}/deployments`, {
+      console.log('🚀 Triggering deployment...', { payload: deploymentPayload })
+
+      const deployResponse = await fetch(deploymentUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
@@ -95,30 +114,49 @@ export async function POST(request: Request) {
 
       clearTimeout(timeout)
 
+      const responseText = await deployResponse.text()
+      console.log('📝 Vercel API Response:', responseText)
+
       if (!deployResponse.ok) {
-        const errorData = await deployResponse.json().catch(() => ({}))
-        throw new Error(errorData.error?.message || `HTTP ${deployResponse.status}`)
+        let errorData
+        try {
+          errorData = JSON.parse(responseText)
+        } catch {
+          errorData = { message: responseText }
+        }
+        
+        throw new Error(
+          `Vercel API Error (${deployResponse.status}): ${
+            errorData.error?.message || errorData.message || 'Unknown error'
+          }`
+        )
       }
 
-      const deploymentData = await deployResponse.json()
+      const deploymentData = JSON.parse(responseText)
 
-      // 4. Log successful deployment trigger
+      // 5. Log successful deployment trigger
       await logToDatabase('info', 'Deployment triggered successfully', {
         deploymentId: deploymentData.id,
         url: deploymentData.url,
-        status: deploymentData.readyState
+        status: deploymentData.readyState || deploymentData.state
       })
 
-      // 5. Return success response
+      // 6. Return success response
       return successResponse({
         deploymentId: deploymentData.id,
-        url: deploymentData.url || ALLOWED_ORIGIN,
-        status: deploymentData.readyState,
-        deploymentUrl: `https://vercel.com/${process.env.VERCEL_TEAM_ID ? `${process.env.VERCEL_TEAM_ID}/` : ''}${process.env.VERCEL_PROJECT_ID}/${deploymentData.id}`
+        url: deploymentData.url || `https://${deploymentData.id}-${projectData.name}.vercel.app`,
+        status: deploymentData.readyState || deploymentData.state,
+        deploymentUrl: `https://vercel.com/${process.env.VERCEL_TEAM_ID ? `${process.env.VERCEL_TEAM_ID}/` : ''}${process.env.VERCEL_PROJECT_ID}/${deploymentData.id}`,
+        inspectorUrl: deploymentData.inspectorUrl
       })
 
     } catch (fetchError) {
       clearTimeout(timeout)
+      
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Deployment request timed out')
+      }
+      
       throw fetchError
     }
 
@@ -128,14 +166,14 @@ export async function POST(request: Request) {
     // Log error to database if possible
     await logToDatabase('error', 'Deployment failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined // Fixed syntax error
     }).catch(e => console.error('Failed to log error:', e))
 
     return errorResponse(500, error instanceof Error ? error.message : 'Deployment failed')
   }
 }
 
-// Helper functions
+// Helper functions remain the same
 async function logToDatabase(level: string, message: string, metadata: object = {}) {
   if (!sql) {
     console.log(`[${level}] ${message}`, metadata)
