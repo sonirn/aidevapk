@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_NEON_NEON_DATABASE_URL!)
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 export async function GET() {
   try {
@@ -132,7 +132,7 @@ export async function GET() {
 
     // 4. Check Environment Variables
     const requiredEnvVars = [
-      "NEON_NEON_NEON_DATABASE_URL",
+      "NEON_NEON_DATABASE_URL",
       "XAI_API_KEY",
       "NEXT_PUBLIC_SUPABASE_URL",
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
