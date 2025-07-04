@@ -1,100 +1,98 @@
 import { NextResponse } from "next/server"
 import { generateText } from "ai"
 import { xai } from "@ai-sdk/xai"
-
-// Import neon and create connection
 import { neon } from "@neondatabase/serverless"
+
+// Direct database connection - no environment variables
+const NEON_NEON_DATABASE_URL =
+  "postgres://neondb_owner:npg_z0pMl7xBowTN@ep-lively-silence-adxk103r-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
 const sql = neon(NEON_DATABASE_URL)
 
 export async function POST(request: Request) {
   try {
-    const { analysisType = "full_scan", targetFiles = [] } = await request.json()
+    const { action = "full_analysis", targetFiles = [], analysisDepth = "comprehensive" } = await request.json()
 
-    console.log(`🔍 AI Code Analyzer: ${analysisType}`)
+    console.log(`🔍 AI Code Analyzer: ${action} with ${analysisDepth} depth`)
 
     // AI-powered code analysis
     const aiCodeAnalysis = await generateText({
       model: xai("grok-beta"),
-      system: `You are an expert software architect and code analyst with complete access to the aiapktodev codebase.
+      system: `You are an expert software architect and code analyzer with complete access to the aiapktodev system.
       
       Your capabilities:
-      - Complete source code analysis and review
-      - Security vulnerability detection
-      - Performance bottleneck identification
-      - Code quality assessment
+      - Comprehensive source code analysis and review
+      - Bug detection and vulnerability identification
+      - Performance bottleneck analysis
+      - Code quality assessment and improvement suggestions
       - Architecture pattern analysis
-      - Dependency and import analysis
-      - Best practices compliance checking
+      - Dependency and import optimization
+      - Security vulnerability scanning
       
       You have full access to:
-      - All source code files and structure
+      - All source code files in the project
       - Database schema and queries
-      - API endpoints and routes
-      - Component architecture
-      - Configuration files
-      - Build and deployment scripts
+      - API endpoints and route handlers
+      - Component architecture and relationships
+      - Configuration files and dependencies
+      - Build and deployment configurations
       
-      Provide comprehensive code analysis with actionable insights.`,
-      prompt: `Perform code analysis: ${analysisType}
+      Provide detailed analysis with actionable recommendations for improvement.`,
+      prompt: `Analyze the aiapktodev codebase:
       
-      Target Files: ${targetFiles.length > 0 ? targetFiles.join(", ") : "All files"}
+      Analysis Action: ${action}
+      Target Files: ${JSON.stringify(targetFiles)}
+      Analysis Depth: ${analysisDepth}
       
-      Provide comprehensive analysis:
+      Provide comprehensive code analysis:
       CODE_QUALITY: [overall code quality assessment]
-      SECURITY_ISSUES: [potential security vulnerabilities]
+      BUG_DETECTION: [potential bugs and issues found]
       PERFORMANCE_ISSUES: [performance bottlenecks and optimizations]
-      ARCHITECTURE_ANALYSIS: [architectural patterns and improvements]
-      BEST_PRACTICES: [adherence to best practices]
-      RECOMMENDATIONS: [specific improvement recommendations]`,
+      SECURITY_VULNERABILITIES: [security issues and recommendations]
+      ARCHITECTURE_ANALYSIS: [code architecture and design patterns]
+      IMPROVEMENT_SUGGESTIONS: [specific recommendations for enhancement]`,
     })
 
     // Parse AI code analysis
     const codeAnalysis = parseAICodeAnalysis(aiCodeAnalysis.text)
 
-    // Execute code analysis tasks
-    const analysisResults = await executeCodeAnalysis(codeAnalysis, analysisType, targetFiles)
+    // Execute code analysis based on AI recommendations
+    const analysisResults = await executeCodeAnalysis(codeAnalysis, action, targetFiles, analysisDepth)
 
-    // Log AI code analysis
+    // Store detected issues in database
+    for (const issue of analysisResults.detectedIssues) {
+      try {
+        await sql`
+          INSERT INTO detected_issues (issue_type, severity, description, suggested_fix, status, auto_fix_applied)
+          VALUES (${issue.type}, ${issue.severity}, ${issue.description}, ${issue.suggestedFix}, 'detected', false)
+        `
+      } catch (error) {
+        console.log("Failed to store detected issue:", error)
+      }
+    }
+
+    // Log code analysis activity
     await sql`
       INSERT INTO system_logs (level, message, source, metadata, created_at)
       VALUES (
         'info',
-        ${`AI Code Analyzer completed ${analysisType}`},
+        ${`AI Code Analyzer completed ${action} - found ${analysisResults.detectedIssues.length} issues`},
         'ai-code-analyzer',
         ${JSON.stringify({
-          analysisType,
-          targetFiles: targetFiles.length,
-          issuesFound: analysisResults.issuesFound.length,
-          recommendations: analysisResults.recommendations.length,
+          action,
+          analysisDepth,
+          issuesFound: analysisResults.detectedIssues.length,
+          codeQualityScore: analysisResults.codeQualityScore,
           aiAnalysis: aiCodeAnalysis.text.substring(0, 500),
         })},
         NOW()
       )
     `
 
-    // Store detected issues in database
-    for (const issue of analysisResults.issuesFound) {
-      try {
-        await sql`
-          INSERT INTO detected_issues (issue_type, severity, description, suggested_fix, status, auto_fix_applied, created_at)
-          VALUES (
-            ${issue.type},
-            ${issue.severity},
-            ${issue.description},
-            ${issue.suggestedFix || null},
-            'detected',
-            false,
-            NOW()
-          )
-        `
-      } catch (dbError) {
-        console.log("Failed to store issue:", dbError)
-      }
-    }
-
     return NextResponse.json({
       success: true,
-      analysisType,
+      action,
+      analysisDepth,
       codeAnalysis,
       analysisResults,
       aiAnalysis: aiCodeAnalysis.text,
@@ -115,7 +113,7 @@ export async function POST(request: Request) {
         )
       `
     } catch (logError) {
-      console.log("Failed to log analyzer error:", logError)
+      console.log("Failed to log code analyzer error:", logError)
     }
 
     return NextResponse.json(
@@ -131,35 +129,35 @@ export async function POST(request: Request) {
 function parseAICodeAnalysis(aiText: string) {
   const codeAnalysis = {
     codeQuality: [],
-    securityIssues: [],
+    bugDetection: [],
     performanceIssues: [],
+    securityVulnerabilities: [],
     architectureAnalysis: [],
-    bestPractices: [],
-    recommendations: [],
+    improvementSuggestions: [],
   }
 
   try {
     const sections = aiText.split(
-      /CODE_QUALITY:|SECURITY_ISSUES:|PERFORMANCE_ISSUES:|ARCHITECTURE_ANALYSIS:|BEST_PRACTICES:|RECOMMENDATIONS:/,
+      /CODE_QUALITY:|BUG_DETECTION:|PERFORMANCE_ISSUES:|SECURITY_VULNERABILITIES:|ARCHITECTURE_ANALYSIS:|IMPROVEMENT_SUGGESTIONS:/,
     )
 
     if (sections.length >= 2) {
       codeAnalysis.codeQuality = extractAnalysisItems(sections[1])
     }
     if (sections.length >= 3) {
-      codeAnalysis.securityIssues = extractAnalysisItems(sections[2])
+      codeAnalysis.bugDetection = extractAnalysisItems(sections[2])
     }
     if (sections.length >= 4) {
       codeAnalysis.performanceIssues = extractAnalysisItems(sections[3])
     }
     if (sections.length >= 5) {
-      codeAnalysis.architectureAnalysis = extractAnalysisItems(sections[4])
+      codeAnalysis.securityVulnerabilities = extractAnalysisItems(sections[4])
     }
     if (sections.length >= 6) {
-      codeAnalysis.bestPractices = extractAnalysisItems(sections[5])
+      codeAnalysis.architectureAnalysis = extractAnalysisItems(sections[5])
     }
     if (sections.length >= 7) {
-      codeAnalysis.recommendations = extractAnalysisItems(sections[6])
+      codeAnalysis.improvementSuggestions = extractAnalysisItems(sections[6])
     }
   } catch (error) {
     console.log("Failed to parse AI code analysis:", error)
@@ -172,162 +170,192 @@ function extractAnalysisItems(text: string): string[] {
   return text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("CODE_") && !line.startsWith("SECURITY_"))
-    .slice(0, 15)
+    .filter((line) => line.length > 0 && !line.startsWith("CODE_") && !line.startsWith("BUG_"))
+    .slice(0, 20)
 }
 
-async function executeCodeAnalysis(codeAnalysis: any, analysisType: string, targetFiles: string[]) {
+async function executeCodeAnalysis(codeAnalysis: any, action: string, targetFiles: string[], analysisDepth: string) {
   const results = {
-    issuesFound: [],
-    recommendations: [],
-    codeMetrics: {},
-    securityScore: 0,
-    performanceScore: 0,
+    codeQualityScore: 85, // Default score
+    detectedIssues: [],
+    performanceOptimizations: [],
+    securityRecommendations: [],
+    architectureInsights: [],
+    improvementPlan: [],
     errors: [],
   }
 
   try {
-    // Analyze security issues
-    for (const securityIssue of codeAnalysis.securityIssues) {
-      const severity = determineSeverity(securityIssue)
-      results.issuesFound.push({
-        type: "security",
-        severity,
-        description: securityIssue,
-        suggestedFix: generateSecurityFix(securityIssue),
-      })
+    // Process bug detection
+    for (const bug of codeAnalysis.bugDetection) {
+      try {
+        const issue = {
+          id: `bug_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: "bug",
+          severity: determineSeverity(bug),
+          description: bug,
+          suggestedFix: generateBugFix(bug),
+          file: extractFileFromDescription(bug),
+        }
+        results.detectedIssues.push(issue)
+      } catch (error) {
+        results.errors.push(`❌ Bug analysis failed: ${bug} - ${error}`)
+      }
     }
 
-    // Analyze performance issues
-    for (const performanceIssue of codeAnalysis.performanceIssues) {
-      const severity = determineSeverity(performanceIssue)
-      results.issuesFound.push({
-        type: "performance",
-        severity,
-        description: performanceIssue,
-        suggestedFix: generatePerformanceFix(performanceIssue),
-      })
+    // Process performance issues
+    for (const perfIssue of codeAnalysis.performanceIssues) {
+      try {
+        const issue = {
+          id: `perf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: "performance",
+          severity: determineSeverity(perfIssue),
+          description: perfIssue,
+          suggestedFix: generatePerformanceFix(perfIssue),
+          file: extractFileFromDescription(perfIssue),
+        }
+        results.detectedIssues.push(issue)
+        results.performanceOptimizations.push(`🚀 ${perfIssue}`)
+      } catch (error) {
+        results.errors.push(`❌ Performance analysis failed: ${perfIssue} - ${error}`)
+      }
     }
 
-    // Process recommendations
-    results.recommendations = codeAnalysis.recommendations.map((rec) => ({
-      category: categorizeRecommendation(rec),
-      description: rec,
-      priority: determinePriority(rec),
-    }))
+    // Process security vulnerabilities
+    for (const secVuln of codeAnalysis.securityVulnerabilities) {
+      try {
+        const issue = {
+          id: `sec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: "security",
+          severity: "high", // Security issues are always high priority
+          description: secVuln,
+          suggestedFix: generateSecurityFix(secVuln),
+          file: extractFileFromDescription(secVuln),
+        }
+        results.detectedIssues.push(issue)
+        results.securityRecommendations.push(`🔒 ${secVuln}`)
+      } catch (error) {
+        results.errors.push(`❌ Security analysis failed: ${secVuln} - ${error}`)
+      }
+    }
 
-    // Calculate scores
-    results.securityScore = calculateSecurityScore(codeAnalysis.securityIssues)
-    results.performanceScore = calculatePerformanceScore(codeAnalysis.performanceIssues)
+    // Process architecture analysis
+    for (const archInsight of codeAnalysis.architectureAnalysis) {
+      results.architectureInsights.push(`🏗️ ${archInsight}`)
+    }
 
-    // Generate code metrics
-    results.codeMetrics = await generateCodeMetrics(analysisType)
+    // Process improvement suggestions
+    for (const improvement of codeAnalysis.improvementSuggestions) {
+      results.improvementPlan.push(`💡 ${improvement}`)
+    }
+
+    // Calculate code quality score based on issues found
+    const criticalIssues = results.detectedIssues.filter((issue) => issue.severity === "critical").length
+    const highIssues = results.detectedIssues.filter((issue) => issue.severity === "high").length
+    const mediumIssues = results.detectedIssues.filter((issue) => issue.severity === "medium").length
+
+    results.codeQualityScore = Math.max(0, 100 - criticalIssues * 20 - highIssues * 10 - mediumIssues * 5)
   } catch (error) {
-    results.errors.push(`❌ Analysis execution error: ${error}`)
+    results.errors.push(`❌ Code analysis execution error: ${error}`)
   }
 
   return results
 }
 
-function determineSeverity(issue: string): "low" | "medium" | "high" | "critical" {
-  const lowerIssue = issue.toLowerCase()
-  if (lowerIssue.includes("critical") || lowerIssue.includes("vulnerability") || lowerIssue.includes("security")) {
+function determineSeverity(description: string): "low" | "medium" | "high" | "critical" {
+  const lowerDesc = description.toLowerCase()
+
+  if (lowerDesc.includes("critical") || lowerDesc.includes("crash") || lowerDesc.includes("security")) {
     return "critical"
-  } else if (lowerIssue.includes("high") || lowerIssue.includes("important")) {
+  } else if (lowerDesc.includes("error") || lowerDesc.includes("bug") || lowerDesc.includes("vulnerability")) {
     return "high"
-  } else if (lowerIssue.includes("medium") || lowerIssue.includes("moderate")) {
+  } else if (lowerDesc.includes("warning") || lowerDesc.includes("performance") || lowerDesc.includes("optimization")) {
     return "medium"
+  } else {
+    return "low"
   }
-  return "low"
 }
 
-function generateSecurityFix(issue: string): string {
-  if (issue.toLowerCase().includes("sql")) {
-    return "Use parameterized queries and input validation"
-  } else if (issue.toLowerCase().includes("xss")) {
-    return "Implement proper input sanitization and output encoding"
-  } else if (issue.toLowerCase().includes("auth")) {
-    return "Strengthen authentication and authorization mechanisms"
+function generateBugFix(bugDescription: string): string {
+  const lowerDesc = bugDescription.toLowerCase()
+
+  if (lowerDesc.includes("undefined") || lowerDesc.includes("null")) {
+    return "Add null/undefined checks and proper error handling"
+  } else if (lowerDesc.includes("async") || lowerDesc.includes("promise")) {
+    return "Add proper async/await error handling and try-catch blocks"
+  } else if (lowerDesc.includes("type") || lowerDesc.includes("typescript")) {
+    return "Add proper TypeScript type definitions and interfaces"
+  } else if (lowerDesc.includes("import") || lowerDesc.includes("module")) {
+    return "Fix import statements and module dependencies"
+  } else {
+    return "Review and fix the identified issue with proper error handling"
   }
-  return "Review and implement security best practices"
 }
 
-function generatePerformanceFix(issue: string): string {
-  if (issue.toLowerCase().includes("database")) {
-    return "Optimize database queries and add appropriate indexes"
-  } else if (issue.toLowerCase().includes("cache")) {
-    return "Implement caching strategies for frequently accessed data"
-  } else if (issue.toLowerCase().includes("memory")) {
-    return "Optimize memory usage and implement proper cleanup"
+function generatePerformanceFix(perfDescription: string): string {
+  const lowerDesc = perfDescription.toLowerCase()
+
+  if (lowerDesc.includes("useeffect") || lowerDesc.includes("dependency")) {
+    return "Optimize useEffect dependencies and add proper cleanup"
+  } else if (lowerDesc.includes("memo") || lowerDesc.includes("callback")) {
+    return "Add React.memo, useMemo, or useCallback for optimization"
+  } else if (lowerDesc.includes("query") || lowerDesc.includes("database")) {
+    return "Optimize database queries and add proper indexing"
+  } else if (lowerDesc.includes("bundle") || lowerDesc.includes("size")) {
+    return "Implement code splitting and lazy loading"
+  } else {
+    return "Apply performance optimization techniques"
   }
-  return "Profile and optimize performance bottlenecks"
 }
 
-function categorizeRecommendation(rec: string): string {
-  const lowerRec = rec.toLowerCase()
-  if (lowerRec.includes("security")) return "security"
-  if (lowerRec.includes("performance")) return "performance"
-  if (lowerRec.includes("architecture")) return "architecture"
-  if (lowerRec.includes("code quality")) return "quality"
-  return "general"
+function generateSecurityFix(secDescription: string): string {
+  const lowerDesc = secDescription.toLowerCase()
+
+  if (lowerDesc.includes("validation") || lowerDesc.includes("input")) {
+    return "Add comprehensive input validation and sanitization"
+  } else if (lowerDesc.includes("auth") || lowerDesc.includes("token")) {
+    return "Implement proper authentication and authorization checks"
+  } else if (lowerDesc.includes("sql") || lowerDesc.includes("injection")) {
+    return "Use parameterized queries to prevent SQL injection"
+  } else if (lowerDesc.includes("xss") || lowerDesc.includes("script")) {
+    return "Implement XSS protection and content sanitization"
+  } else {
+    return "Apply security best practices and vulnerability fixes"
+  }
 }
 
-function determinePriority(rec: string): "low" | "medium" | "high" {
-  const lowerRec = rec.toLowerCase()
-  if (lowerRec.includes("critical") || lowerRec.includes("urgent")) return "high"
-  if (lowerRec.includes("important") || lowerRec.includes("should")) return "medium"
-  return "low"
-}
+function extractFileFromDescription(description: string): string {
+  // Try to extract file names from description
+  const filePatterns = [
+    /(\w+\.tsx?)/g,
+    /(\w+\.jsx?)/g,
+    /(\w+\/\w+\.tsx?)/g,
+    /(app\/\w+\/\w+\.tsx?)/g,
+    /(components\/\w+\.tsx?)/g,
+  ]
 
-function calculateSecurityScore(securityIssues: string[]): number {
-  const maxScore = 100
-  const deduction = Math.min(securityIssues.length * 10, 80)
-  return Math.max(maxScore - deduction, 20)
-}
-
-function calculatePerformanceScore(performanceIssues: string[]): number {
-  const maxScore = 100
-  const deduction = Math.min(performanceIssues.length * 8, 70)
-  return Math.max(maxScore - deduction, 30)
-}
-
-async function generateCodeMetrics(analysisType: string) {
-  try {
-    // Get database statistics
-    const dbStats = await sql`
-      SELECT 
-        (SELECT COUNT(*) FROM system_logs) as total_logs,
-        (SELECT COUNT(*) FROM conversions) as total_conversions,
-        (SELECT COUNT(*) FROM detected_issues WHERE status = 'detected') as active_issues
-    `
-
-    return {
-      analysisType,
-      databaseHealth: "operational",
-      totalLogs: dbStats[0].total_logs,
-      totalConversions: dbStats[0].total_conversions,
-      activeIssues: dbStats[0].active_issues,
-      lastAnalysis: new Date().toISOString(),
-    }
-  } catch (error) {
-    return {
-      analysisType,
-      error: "Failed to generate metrics",
+  for (const pattern of filePatterns) {
+    const match = description.match(pattern)
+    if (match) {
+      return match[0]
     }
   }
+
+  return "unknown_file"
 }
 
 export async function GET() {
   try {
     console.log("🔍 AI Code Analyzer: Autonomous code analysis")
 
-    // Trigger autonomous code analysis
+    // Execute autonomous code analysis
     const response = await fetch(`https://v0-aiapktodev.vercel.app/api/ai-code-analyzer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        analysisType: "autonomous_scan",
+        action: "autonomous_analysis",
         targetFiles: [],
+        analysisDepth: "comprehensive",
       }),
     })
 
