@@ -45,32 +45,34 @@ export async function POST(request: Request) {
     }
 
     // Method 1: Try hook-based deployment (recommended)
-    try {
-      console.log('📡 Attempting hook-based deployment...')
-      
-      const hookResponse = await fetch(`https://api.vercel.com/v1/integrations/deploy/prj_${process.env.VERCEL_PROJECT_ID}/YourDeployHookId`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
+    if (process.env.VERCEL_DEPLOY_HOOK_URL) {
+      try {
+        console.log('📡 Attempting hook-based deployment...')
+        
+        const hookResponse = await fetch(process.env.VERCEL_DEPLOY_HOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
 
-      if (hookResponse.ok) {
-        const hookData = await hookResponse.json()
-        console.log('✅ Hook deployment successful:', hookData)
-        
-        await logToDatabase('info', 'Deployment triggered via hook', { method: 'hook', data: hookData })
-        
-        return NextResponse.json({
-          success: true,
-          method: 'hook',
-          deploymentId: hookData.id || 'hook-triggered',
-          message: 'Deployment triggered successfully via deploy hook',
-          timestamp: new Date().toISOString()
-        }, { headers: corsHeaders })
+        if (hookResponse.ok) {
+          const hookData = await hookResponse.text()
+          console.log('✅ Hook deployment successful')
+          
+          await logToDatabase('info', 'Deployment triggered via hook', { method: 'hook' })
+          
+          return NextResponse.json({
+            success: true,
+            method: 'hook',
+            deploymentId: 'hook-triggered',
+            message: 'Deployment triggered successfully via deploy hook',
+            timestamp: new Date().toISOString()
+          }, { headers: corsHeaders })
+        }
+      } catch (hookError) {
+        console.log('⚠️ Hook deployment failed, trying API method:', hookError)
       }
-    } catch (hookError) {
-      console.log('⚠️ Hook deployment failed, trying API method:', hookError)
     }
 
     // Method 2: Direct API deployment
@@ -196,7 +198,7 @@ export async function POST(request: Request) {
     
     await logToDatabase('error', 'Deployment endpoint error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined // FIXED: Added 'undefined'
     })
 
     return NextResponse.json({
