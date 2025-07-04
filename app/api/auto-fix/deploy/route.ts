@@ -2,21 +2,10 @@
 import { NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 
-// Initialize database connection with error handling
-let sql
-try {
-  sql = neon(process.env.NEON_NEON_DATABASE_URL!) // Fixed: removed duplicate NEON_
-} catch (err) {
-  console.error("❌ Failed to initialize database connection:", err)
-}
-
-// Security configuration
-const ALLOWED_ORIGIN = "https://v0-aiapktodev.vercel.app"
-const API_VERSION = "v13"
-const DEPLOYMENT_TIMEOUT = 30000 // Increased to 30 seconds
+const sql = neon(process.env.NEON_DATABASE_URL!)
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 }
@@ -29,193 +18,211 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: Request) {
-  const origin = request.headers.get('origin')
-  if (origin !== ALLOWED_ORIGIN) {
-    console.warn(`⚠️ Blocked request from unauthorized origin: ${origin}`)
-    return errorResponse(403, 'Unauthorized origin')
-  }
-
-  // Validate required environment variables
-  const requiredEnvVars = {
-    NEON_DATABASE_URL: process.env.NEON_DATABASE_URL, // Fixed variable name
-    VERCEL_ACCESS_TOKEN: process.env.VERCEL_ACCESS_TOKEN,
-    VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID
-  }
-
-  const missingVars = Object.entries(requiredEnvVars)
-    .filter(([_, value]) => !value)
-    .map(([key]) => key)
-
-  if (missingVars.length > 0) {
-    return errorResponse(500, `Missing environment variables: ${missingVars.join(', ')}`)
-  }
-
   try {
-    // 1. Verify database connection
+    console.log('🚀 Deployment request received')
+
+    // Validate environment variables
+    const requiredEnvVars = {
+      VERCEL_ACCESS_TOKEN: process.env.VERCEL_ACCESS_TOKEN,
+      VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+      GITHUB_REPO_ID: process.env.GITHUB_REPO_ID
+    }
+
+    const missingVars = Object.entries(requiredEnvVars)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key)
+
+    if (missingVars.length > 0) {
+      console.error('❌ Missing environment variables:', missingVars)
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Missing environment variables: ${missingVars.join(', ')}`,
+          details: 'Please check your Vercel environment variables'
+        },
+        { status: 500, headers: corsHeaders }
+      )
+    }
+
+    // Method 1: Try hook-based deployment (recommended)
     try {
-      await sql`SELECT 1`
-      await logToDatabase('info', 'Database connection verified', { check: 'database' })
-    } catch (dbError) {
-      console.error('❌ Database connection failed:', dbError)
-      return errorResponse(500, 'Database connection failed')
-    }
-
-    // 2. Get project details first (recommended approach)
-    const projectResponse = await fetch(
-      `https://api.vercel.com/v9/projects/${process.env.VERCEL_PROJECT_ID}`,
-      {
+      console.log('📡 Attempting hook-based deployment...')
+      
+      const hookResponse = await fetch(`https://api.vercel.com/v1/integrations/deploy/prj_${process.env.VERCEL_PROJECT_ID}/YourDeployHookId`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
         }
-      }
-    )
+      })
 
-    if (!projectResponse.ok) {
-      throw new Error(`Failed to fetch project details: ${projectResponse.status}`)
+      if (hookResponse.ok) {
+        const hookData = await hookResponse.json()
+        console.log('✅ Hook deployment successful:', hookData)
+        
+        await logToDatabase('info', 'Deployment triggered via hook', { method: 'hook', data: hookData })
+        
+        return NextResponse.json({
+          success: true,
+          method: 'hook',
+          deploymentId: hookData.id || 'hook-triggered',
+          message: 'Deployment triggered successfully via deploy hook',
+          timestamp: new Date().toISOString()
+        }, { headers: corsHeaders })
+      }
+    } catch (hookError) {
+      console.log('⚠️ Hook deployment failed, trying API method:', hookError)
     }
 
-    const projectData = await projectResponse.json()
-
-    // 3. Prepare deployment payload with correct structure
+    // Method 2: Direct API deployment
+    console.log('📡 Attempting API-based deployment...')
+    
     const deploymentPayload = {
-      name: projectData.name || "aiapktodev",
+      name: "aiapktodev",
       gitSource: {
-        type: "github", // or "gitlab", "bitbucket"
-        repo: projectData.link?.repo || `${projectData.accountId}/${projectData.name}`,
-        ref: "main" // or your default branch
+        type: "github",
+        repoId: process.env.GITHUB_REPO_ID,
+        ref: "main"
       },
       target: "production",
       projectSettings: {
-        framework: projectData.framework || "nextjs"
+        framework: "nextjs"
       }
     }
 
-    // Add team ID if available
-    const deploymentUrl = process.env.VERCEL_TEAM_ID 
-      ? `https://api.vercel.com/${API_VERSION}/deployments?teamId=${process.env.VERCEL_TEAM_ID}`
-      : `https://api.vercel.com/${API_VERSION}/deployments`
+    console.log('📦 Deployment payload:', JSON.stringify(deploymentPayload, null, 2))
 
-    // 4. Trigger deployment with proper timeout
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), DEPLOYMENT_TIMEOUT)
+    const apiUrl = process.env.VERCEL_TEAM_ID 
+      ? `https://api.vercel.com/v13/deployments?teamId=${process.env.VERCEL_TEAM_ID}`
+      : `https://api.vercel.com/v13/deployments`
 
-    try {
-      console.log('🚀 Triggering deployment...', { payload: deploymentPayload })
+    const deployResponse = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(deploymentPayload)
+    })
 
-      const deployResponse = await fetch(deploymentUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(deploymentPayload),
-        signal: controller.signal
-      })
+    const responseText = await deployResponse.text()
+    console.log('📝 Vercel API Response Status:', deployResponse.status)
+    console.log('📝 Vercel API Response:', responseText)
 
-      clearTimeout(timeout)
+    if (!deployResponse.ok) {
+      let errorData
+      try {
+        errorData = JSON.parse(responseText)
+      } catch {
+        errorData = { message: responseText }
+      }
 
-      const responseText = await deployResponse.text()
-      console.log('📝 Vercel API Response:', responseText)
+      const errorMessage = errorData.error?.message || errorData.message || 'Unknown deployment error'
+      console.error('❌ Deployment API error:', errorMessage)
 
-      if (!deployResponse.ok) {
-        let errorData
-        try {
-          errorData = JSON.parse(responseText)
-        } catch {
-          errorData = { message: responseText }
-        }
+      // Method 3: Fallback to simple redeploy
+      if (deployResponse.status === 400 || deployResponse.status === 422) {
+        console.log('🔄 Trying simplified deployment...')
         
-        throw new Error(
-          `Vercel API Error (${deployResponse.status}): ${
-            errorData.error?.message || errorData.message || 'Unknown error'
-          }`
-        )
+        const simplePayload = {
+          name: "aiapktodev",
+          target: "production"
+        }
+
+        const simpleResponse = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(simplePayload)
+        })
+
+        if (simpleResponse.ok) {
+          const simpleData = await simpleResponse.json()
+          console.log('✅ Simple deployment successful:', simpleData)
+          
+          await logToDatabase('info', 'Deployment triggered via simple API', { method: 'simple-api', data: simpleData })
+          
+          return NextResponse.json({
+            success: true,
+            method: 'simple-api',
+            deploymentId: simpleData.id,
+            url: simpleData.url,
+            message: 'Deployment triggered successfully via simple API',
+            timestamp: new Date().toISOString()
+          }, { headers: corsHeaders })
+        }
       }
 
-      const deploymentData = JSON.parse(responseText)
-
-      // 5. Log successful deployment trigger
-      await logToDatabase('info', 'Deployment triggered successfully', {
-        deploymentId: deploymentData.id,
-        url: deploymentData.url,
-        status: deploymentData.readyState || deploymentData.state
+      await logToDatabase('error', 'Deployment failed', { 
+        error: errorMessage, 
+        status: deployResponse.status,
+        response: responseText 
       })
 
-      // 6. Return success response
-      return successResponse({
-        deploymentId: deploymentData.id,
-        url: deploymentData.url || `https://${deploymentData.id}-${projectData.name}.vercel.app`,
-        status: deploymentData.readyState || deploymentData.state,
-        deploymentUrl: `https://vercel.com/${process.env.VERCEL_TEAM_ID ? `${process.env.VERCEL_TEAM_ID}/` : ''}${process.env.VERCEL_PROJECT_ID}/${deploymentData.id}`,
-        inspectorUrl: deploymentData.inspectorUrl
+      return NextResponse.json({
+        success: false,
+        error: errorMessage,
+        details: errorData,
+        status: deployResponse.status,
+        timestamp: new Date().toISOString()
+      }, { 
+        status: deployResponse.status >= 500 ? 500 : 400, 
+        headers: corsHeaders 
       })
-
-    } catch (fetchError) {
-      clearTimeout(timeout)
-      
-      if (fetchError.name === 'AbortError') {
-        throw new Error('Deployment request timed out')
-      }
-      
-      throw fetchError
     }
+
+    const deploymentData = JSON.parse(responseText)
+    console.log('✅ Deployment successful:', deploymentData)
+
+    await logToDatabase('info', 'Deployment triggered successfully', { 
+      method: 'api',
+      deploymentId: deploymentData.id,
+      url: deploymentData.url 
+    })
+
+    return NextResponse.json({
+      success: true,
+      method: 'api',
+      deploymentId: deploymentData.id,
+      url: deploymentData.url,
+      status: deploymentData.readyState || deploymentData.state,
+      message: 'Deployment triggered successfully',
+      timestamp: new Date().toISOString()
+    }, { headers: corsHeaders })
 
   } catch (error) {
-    console.error('❌ Deployment failed:', error)
-
-    // Log error to database if possible
-    await logToDatabase('error', 'Deployment failed', {
+    console.error('❌ Deployment endpoint error:', error)
+    
+    await logToDatabase('error', 'Deployment endpoint error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined // Fixed syntax error
-    }).catch(e => console.error('Failed to log error:', e))
+      stack: error instanceof Error ? error.stack : undefined
+    })
 
-    return errorResponse(500, error instanceof Error ? error.message : 'Deployment failed')
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Deployment failed',
+      timestamp: new Date().toISOString()
+    }, { 
+      status: 500, 
+      headers: corsHeaders 
+    })
   }
 }
 
-// Helper functions remain the same
 async function logToDatabase(level: string, message: string, metadata: object = {}) {
-  if (!sql) {
-    console.log(`[${level}] ${message}`, metadata)
-    return
+  try {
+    await sql`
+      INSERT INTO system_logs (level, message, source, metadata, created_at)
+      VALUES (
+        ${level},
+        ${message},
+        'auto-fix-deploy',
+        ${JSON.stringify(metadata)},
+        NOW()
+      )
+    `
+  } catch (error) {
+    console.error('Failed to log to database:', error)
   }
-
-  return sql`
-    INSERT INTO system_logs (level, message, source, metadata, created_at)
-    VALUES (
-      ${level},
-      ${message},
-      'auto-fix-deploy',
-      ${JSON.stringify(metadata)},
-      NOW()
-    )
-  `.catch(e => console.error('Database logging failed:', e))
-}
-
-function successResponse(data: object) {
-  return new NextResponse(JSON.stringify({
-    success: true,
-    timestamp: new Date().toISOString(),
-    ...data
-  }), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders
-    }
-  })
-}
-
-function errorResponse(status: number, message: string) {
-  return new NextResponse(JSON.stringify({
-    success: false,
-    error: message,
-    timestamp: new Date().toISOString()
-  }), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders
-    }
-  })
 }
