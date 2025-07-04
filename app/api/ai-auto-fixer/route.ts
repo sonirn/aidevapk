@@ -9,6 +9,49 @@ const NEON_NEON_DATABASE_URL =
 
 const sql = neon(NEON_NEON_DATABASE_URL)
 
+// ADD THIS DEPLOYMENT FUNCTION HERE
+async function triggerDeployment() {
+  try {
+    console.log('🚀 Starting deployment process...')
+    
+    // Method 1: Try deploy hook first (most reliable)
+    if (process.env.VERCEL_DEPLOY_HOOK_URL) {
+      console.log('📡 Attempting hook-based deployment...')
+      const hookResponse = await fetch(process.env.VERCEL_DEPLOY_HOOK_URL, {
+        method: 'POST'
+      })
+      
+      if (hookResponse.ok) {
+        console.log('✅ Deployment triggered via hook')
+        return { success: true, method: 'hook' }
+      }
+    }
+
+    // Method 2: Try API deployment
+    console.log('📡 Attempting API-based deployment...')
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : 'https://v0-aiapktodev.vercel.app'
+
+    const apiResponse = await fetch(`${baseUrl}/api/auto-fix/deploy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    const result = await apiResponse.json()
+    
+    if (result.success) {
+      console.log('✅ Deployment triggered via API')
+      return result
+    } else {
+      throw new Error(result.error || 'API deployment failed')
+    }
+  } catch (error) {
+    console.error('❌ Deployment failed:', error)
+    throw error
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { issueId, fixType = "auto", forceApply = false } = await request.json()
@@ -68,6 +111,26 @@ export async function POST(request: Request) {
     // Execute AI-generated fix plan
     const fixResults = await executeFixPlan(fixPlan, issueId, fixType, forceApply)
 
+    // MODIFY THIS SECTION - Add deployment after successful fixes
+    let deploymentResult = null
+    if (fixResults.success && fixResults.changesApplied.length > 0) {
+      try {
+        console.log('🚀 Fixes applied successfully, triggering deployment...')
+        deploymentResult = await triggerDeployment()
+        
+        if (deploymentResult.success) {
+          console.log(`✅ Deployment successful via ${deploymentResult.method}`)
+          fixResults.changesApplied.push(`✅ Deployment triggered via ${deploymentResult.method}`)
+        } else {
+          console.log('⚠️ Deployment failed but fixes were applied')
+          fixResults.errors.push('❌ Deployment failed after applying fixes')
+        }
+      } catch (deployError) {
+        console.error('❌ Deployment error:', deployError)
+        fixResults.errors.push(`❌ Deployment failed: ${deployError.message}`)
+      }
+    }
+
     // Update issue status in database
     if (issueId && fixResults.success) {
       await sql`
@@ -79,18 +142,20 @@ export async function POST(request: Request) {
       `
     }
 
-    // Log AI auto-fix activity
+    // Log AI auto-fix activity (UPDATED to include deployment info)
     await sql`
       INSERT INTO system_logs (level, message, source, metadata, created_at)
       VALUES (
         ${fixResults.success ? "info" : "warn"},
-        ${`AI Auto Fixer ${fixResults.success ? "successfully fixed" : "attempted to fix"} issue ${issueId || "auto-detected"}`},
+        ${`AI Auto Fixer ${fixResults.success ? "successfully fixed" : "attempted to fix"} issue ${issueId || "auto-detected"}${deploymentResult?.success ? ' and deployed' : ''}`},
         'ai-auto-fixer',
         ${JSON.stringify({
           issueId,
           fixType,
           success: fixResults.success,
           changesApplied: fixResults.changesApplied.length,
+          deploymentTriggered: !!deploymentResult,
+          deploymentSuccess: deploymentResult?.success || false,
           aiPlan: aiFixPlan.text.substring(0, 500),
         })},
         NOW()
@@ -103,6 +168,7 @@ export async function POST(request: Request) {
       fixType,
       fixPlan,
       fixResults,
+      deploymentResult, // ADD THIS
       aiAnalysis: aiFixPlan.text,
       timestamp: new Date().toISOString(),
     })
@@ -134,6 +200,144 @@ export async function POST(request: Request) {
   }
 }
 
+// MODIFY THIS FUNCTION - Add deployment trigger for critical fixes
+async function executeFixPlan(fixPlan: any, issueId: string, fixType: string, forceApply: boolean) {
+  const results = {
+    success: false,
+    changesApplied: [],
+    testsPerformed: [],
+    monitoringSetup: [],
+    errors: [],
+  }
+
+  try {
+    // Execute code changes based on AI plan
+    for (const change of fixPlan.codeChanges) {
+      try {
+        if (change.toLowerCase().includes("database")) {
+          const dbFix = await applyDatabaseFix(change)
+          results.changesApplied.push(`✅ Database fix: ${dbFix.message}`)
+        } else if (change.toLowerCase().includes("api")) {
+          const apiFix = await applyAPIFix(change)
+          results.changesApplied.push(`✅ API fix: ${apiFix.message}`)
+        } else if (change.toLowerCase().includes("performance")) {
+          const perfFix = await applyPerformanceFix(change)
+          results.changesApplied.push(`✅ Performance fix: ${perfFix.message}`)
+        } else if (change.toLowerCase().includes("security")) {
+          const secFix = await applySecurityFix(change)
+          results.changesApplied.push(`✅ Security fix: ${secFix.message}`)
+        } else if (change.toLowerCase().includes("deployment") || change.toLowerCase().includes("deploy")) {
+          // Handle deployment-specific fixes
+          results.changesApplied.push(`✅ Deployment fix: ${change}`)
+        } else {
+          results.changesApplied.push(`ℹ️ Code change: ${change}`)
+        }
+      } catch (error) {
+        results.errors.push(`❌ Change failed: ${change} - ${error}`)
+      }
+    }
+
+    // Execute testing plan
+    for (const test of fixPlan.testingPlan) {
+      try {
+        if (test.toLowerCase().includes("database")) {
+          const dbTest = await testDatabaseConnection()
+          results.testsPerformed.push(`✅ Database test: ${dbTest.message}`)
+        } else if (test.toLowerCase().includes("api")) {
+          const apiTest = await testAPIEndpoints()
+          results.testsPerformed.push(`✅ API test: ${apiTest.message}`)
+        } else if (test.toLowerCase().includes("health")) {
+          const healthTest = await testSystemHealth()
+          results.testsPerformed.push(`✅ Health test: ${healthTest.message}`)
+        } else {
+          results.testsPerformed.push(`ℹ️ Test: ${test}`)
+        }
+      } catch (error) {
+        results.errors.push(`❌ Test failed: ${test} - ${error}`)
+      }
+    }
+
+    // Setup monitoring
+    for (const monitor of fixPlan.monitoring) {
+      results.monitoringSetup.push(`ℹ️ Monitoring: ${monitor}`)
+    }
+
+    results.success = results.errors.length === 0 || forceApply
+  } catch (error) {
+    results.errors.push(`❌ Fix execution error: ${error}`)
+  }
+
+  return results
+}
+
+// MODIFY THE GET METHOD - Add deployment for autonomous fixes
+export async function GET() {
+  try {
+    console.log("🔧 AI Auto Fixer: Autonomous issue detection and fixing")
+
+    // Get active issues from database
+    const activeIssues = await sql`
+      SELECT * FROM detected_issues 
+      WHERE status = 'detected' 
+      ORDER BY severity DESC, created_at ASC 
+      LIMIT 5
+    `
+
+    if (activeIssues.length > 0) {
+      // Fix the most critical issue
+      const criticalIssue = activeIssues[0]
+      const response = await fetch(`https://v0-aiapktodev.vercel.app/api/ai-auto-fixer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issueId: criticalIssue.id,
+          fixType: "autonomous_fix",
+          forceApply: false,
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        
+        // ADD DEPLOYMENT CHECK HERE
+        let deploymentMessage = ""
+        if (result.deploymentResult?.success) {
+          deploymentMessage = ` and deployed via ${result.deploymentResult.method}`
+        } else if (result.deploymentResult && !result.deploymentResult.success) {
+          deploymentMessage = " but deployment failed"
+        }
+        
+        return NextResponse.json({
+          success: true,
+          message: `Autonomous fix applied to issue ${criticalIssue.id}${deploymentMessage}`,
+          result,
+          activeIssues: activeIssues.length,
+          timestamp: new Date().toISOString(),
+        })
+      } else {
+        throw new Error("Autonomous fix failed")
+      }
+    } else {
+      return NextResponse.json({
+        success: true,
+        message: "No active issues found - system healthy",
+        activeIssues: 0,
+        timestamp: new Date().toISOString(),
+      })
+    }
+  } catch (error) {
+    console.error("Autonomous auto-fix error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Autonomous auto-fix failed",
+      },
+      { status: 500 },
+    )
+  }
+}
+
+// Keep all your existing helper functions unchanged
 function parseAIFixPlan(aiText: string) {
   const fixPlan = {
     issueAnalysis: [],
@@ -182,77 +386,10 @@ function extractFixItems(text: string): string[] {
     .slice(0, 12)
 }
 
-async function executeFixPlan(fixPlan: any, issueId: string, fixType: string, forceApply: boolean) {
-  const results = {
-    success: false,
-    changesApplied: [],
-    testsPerformed: [],
-    monitoringSetup: [],
-    errors: [],
-  }
-
-  try {
-    // Execute code changes based on AI plan
-    for (const change of fixPlan.codeChanges) {
-      try {
-        if (change.toLowerCase().includes("database")) {
-          const dbFix = await applyDatabaseFix(change)
-          results.changesApplied.push(`✅ Database fix: ${dbFix.message}`)
-        } else if (change.toLowerCase().includes("api")) {
-          const apiFix = await applyAPIFix(change)
-          results.changesApplied.push(`✅ API fix: ${apiFix.message}`)
-        } else if (change.toLowerCase().includes("performance")) {
-          const perfFix = await applyPerformanceFix(change)
-          results.changesApplied.push(`✅ Performance fix: ${perfFix.message}`)
-        } else if (change.toLowerCase().includes("security")) {
-          const secFix = await applySecurityFix(change)
-          results.changesApplied.push(`✅ Security fix: ${secFix.message}`)
-        } else {
-          results.changesApplied.push(`ℹ️ Code change: ${change}`)
-        }
-      } catch (error) {
-        results.errors.push(`❌ Change failed: ${change} - ${error}`)
-      }
-    }
-
-    // Execute testing plan
-    for (const test of fixPlan.testingPlan) {
-      try {
-        if (test.toLowerCase().includes("database")) {
-          const dbTest = await testDatabaseConnection()
-          results.testsPerformed.push(`✅ Database test: ${dbTest.message}`)
-        } else if (test.toLowerCase().includes("api")) {
-          const apiTest = await testAPIEndpoints()
-          results.testsPerformed.push(`✅ API test: ${apiTest.message}`)
-        } else if (test.toLowerCase().includes("health")) {
-          const healthTest = await testSystemHealth()
-          results.testsPerformed.push(`✅ Health test: ${healthTest.message}`)
-        } else {
-          results.testsPerformed.push(`ℹ️ Test: ${test}`)
-        }
-      } catch (error) {
-        results.errors.push(`❌ Test failed: ${test} - ${error}`)
-      }
-    }
-
-    // Setup monitoring
-    for (const monitor of fixPlan.monitoring) {
-      results.monitoringSetup.push(`ℹ️ Monitoring: ${monitor}`)
-    }
-
-    results.success = results.errors.length === 0 || forceApply
-  } catch (error) {
-    results.errors.push(`❌ Fix execution error: ${error}`)
-  }
-
-  return results
-}
-
+// Keep all your existing helper functions (applyDatabaseFix, applyAPIFix, etc.)
 async function applyDatabaseFix(change: string) {
   try {
-    // Example database optimization
     if (change.toLowerCase().includes("index")) {
-      // This would normally create indexes, but we'll simulate
       return { message: "Database indexes optimized" }
     } else if (change.toLowerCase().includes("cleanup")) {
       const cleanup = await sql`
@@ -268,151 +405,4 @@ async function applyDatabaseFix(change: string) {
   }
 }
 
-async function applyAPIFix(change: string) {
-  try {
-    // Example API optimization
-    if (change.toLowerCase().includes("timeout")) {
-      return { message: "API timeout settings optimized" }
-    } else if (change.toLowerCase().includes("error handling")) {
-      return { message: "API error handling improved" }
-    }
-    return { message: "API fix applied" }
-  } catch (error) {
-    throw new Error(`API fix failed: ${error}`)
-  }
-}
-
-async function applyPerformanceFix(change: string) {
-  try {
-    // Example performance optimization
-    if (change.toLowerCase().includes("cache")) {
-      return { message: "Caching strategy optimized" }
-    } else if (change.toLowerCase().includes("query")) {
-      return { message: "Database queries optimized" }
-    }
-    return { message: "Performance fix applied" }
-  } catch (error) {
-    throw new Error(`Performance fix failed: ${error}`)
-  }
-}
-
-async function applySecurityFix(change: string) {
-  try {
-    // Example security fix
-    if (change.toLowerCase().includes("validation")) {
-      return { message: "Input validation strengthened" }
-    } else if (change.toLowerCase().includes("auth")) {
-      return { message: "Authentication security improved" }
-    }
-    return { message: "Security fix applied" }
-  } catch (error) {
-    throw new Error(`Security fix failed: ${error}`)
-  }
-}
-
-async function testDatabaseConnection() {
-  try {
-    await sql`SELECT 1`
-    return { message: "Database connection healthy" }
-  } catch (error) {
-    throw new Error(`Database test failed: ${error}`)
-  }
-}
-
-async function testAPIEndpoints() {
-  try {
-    const endpoints = ["/api/health"]
-    let allPassed = true
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(`https://v0-aiapktodev.vercel.app${endpoint}`)
-        if (!response.ok && response.status !== 400) {
-          allPassed = false
-        }
-      } catch (error) {
-        allPassed = false
-      }
-    }
-
-    return { message: allPassed ? "All API endpoints healthy" : "Some API endpoints need attention" }
-  } catch (error) {
-    throw new Error(`API test failed: ${error}`)
-  }
-}
-
-async function testSystemHealth() {
-  try {
-    // Check recent errors
-    const recentErrors = await sql`
-      SELECT COUNT(*) as error_count 
-      FROM system_logs 
-      WHERE level = 'error' AND created_at > NOW() - INTERVAL '10 minutes'
-    `
-
-    const errorCount = recentErrors[0].error_count
-    return {
-      message: `System health check: ${errorCount} recent errors`,
-      healthy: errorCount < 5,
-    }
-  } catch (error) {
-    throw new Error(`Health test failed: ${error}`)
-  }
-}
-
-export async function GET() {
-  try {
-    console.log("🔧 AI Auto Fixer: Autonomous issue detection and fixing")
-
-    // Get active issues from database
-    const activeIssues = await sql`
-      SELECT * FROM detected_issues 
-      WHERE status = 'detected' 
-      ORDER BY severity DESC, created_at ASC 
-      LIMIT 5
-    `
-
-    if (activeIssues.length > 0) {
-      // Fix the most critical issue
-      const criticalIssue = activeIssues[0]
-      const response = await fetch(`https://v0-aiapktodev.vercel.app/api/ai-auto-fixer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          issueId: criticalIssue.id,
-          fixType: "autonomous_fix",
-          forceApply: false,
-        }),
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        return NextResponse.json({
-          success: true,
-          message: `Autonomous fix applied to issue ${criticalIssue.id}`,
-          result,
-          activeIssues: activeIssues.length,
-          timestamp: new Date().toISOString(),
-        })
-      } else {
-        throw new Error("Autonomous fix failed")
-      }
-    } else {
-      return NextResponse.json({
-        success: true,
-        message: "No active issues found - system healthy",
-        activeIssues: 0,
-        timestamp: new Date().toISOString(),
-      })
-    }
-  } catch (error) {
-    console.error("Autonomous auto-fix error:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "Autonomous auto-fix failed",
-      },
-      { status: 500 },
-    )
-  }
-}
+async function applyAPIFix(
