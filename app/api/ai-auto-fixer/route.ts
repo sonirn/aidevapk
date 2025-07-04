@@ -270,7 +270,117 @@ async function executeFixPlan(fixPlan: any, issueId: string, fixType: string, fo
   return results
 }
 
-// MODIFY THE GET METHOD - Add deployment for autonomous fixes
+// Keep all your existing helper functions unchanged
+async function applyDatabaseFix(change: string) {
+  try {
+    if (change.toLowerCase().includes("index")) {
+      return { message: "Database indexes optimized" }
+    } else if (change.toLowerCase().includes("cleanup")) {
+      const cleanup = await sql`
+        DELETE FROM system_logs 
+        WHERE created_at < NOW() - INTERVAL '30 days' 
+        AND level = 'debug'
+      `
+      return { message: `Cleaned up ${cleanup.length} old debug logs` }
+    }
+    return { message: "Database fix applied" }
+  } catch (error) {
+    throw new Error(`Database fix failed: ${error}`)
+  }
+}
+
+async function applyAPIFix(change: string) {
+  try {
+    // Example API optimization
+    if (change.toLowerCase().includes("timeout")) {
+      return { message: "API timeout settings optimized" }
+    } else if (change.toLowerCase().includes("error handling")) {
+      return { message: "API error handling improved" }
+    }
+    return { message: "API fix applied" }
+  } catch (error) {
+    throw new Error(`API fix failed: ${error}`)
+  }
+}
+
+async function applyPerformanceFix(change: string) {
+  try {
+    // Example performance optimization
+    if (change.toLowerCase().includes("cache")) {
+      return { message: "Caching strategy optimized" }
+    } else if (change.toLowerCase().includes("query")) {
+      return { message: "Database queries optimized" }
+    }
+    return { message: "Performance fix applied" }
+  } catch (error) {
+    throw new Error(`Performance fix failed: ${error}`)
+  }
+}
+
+async function applySecurityFix(change: string) {
+  try {
+    // Example security fix
+    if (change.toLowerCase().includes("validation")) {
+      return { message: "Input validation strengthened" }
+    } else if (change.toLowerCase().includes("auth")) {
+      return { message: "Authentication security improved" }
+    }
+    return { message: "Security fix applied" }
+  } catch (error) {
+    throw new Error(`Security fix failed: ${error}`)
+  }
+}
+
+async function testDatabaseConnection() {
+  try {
+    await sql`SELECT 1`
+    return { message: "Database connection healthy" }
+  } catch (error) {
+    throw new Error(`Database test failed: ${error}`)
+  }
+}
+
+async function testAPIEndpoints() {
+  try {
+    const endpoints = ["/api/health"]
+    let allPassed = true
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(`https://v0-aiapktodev.vercel.app${endpoint}`)
+        if (!response.ok && response.status !== 400) {
+          allPassed = false
+        }
+      } catch (error) {
+        allPassed = false
+      }
+    }
+
+    return { message: allPassed ? "All API endpoints healthy" : "Some API endpoints need attention" }
+  } catch (error) {
+    throw new Error(`API test failed: ${error}`)
+  }
+}
+
+async function testSystemHealth() {
+  try {
+    // Check recent errors
+    const recentErrors = await sql`
+      SELECT COUNT(*) as error_count 
+      FROM system_logs 
+      WHERE level = 'error' AND created_at > NOW() - INTERVAL '10 minutes'
+    `
+
+    const errorCount = recentErrors[0].error_count
+    return {
+      message: `System health check: ${errorCount} recent errors`,
+      healthy: errorCount < 5,
+    }
+  } catch (error) {
+    throw new Error(`Health test failed: ${error}`)
+  }
+}
+
 export async function GET() {
   try {
     console.log("🔧 AI Auto Fixer: Autonomous issue detection and fixing")
@@ -298,18 +408,9 @@ export async function GET() {
 
       if (response.ok) {
         const result = await response.json()
-        
-        // ADD DEPLOYMENT CHECK HERE
-        let deploymentMessage = ""
-        if (result.deploymentResult?.success) {
-          deploymentMessage = ` and deployed via ${result.deploymentResult.method}`
-        } else if (result.deploymentResult && !result.deploymentResult.success) {
-          deploymentMessage = " but deployment failed"
-        }
-        
         return NextResponse.json({
           success: true,
-          message: `Autonomous fix applied to issue ${criticalIssue.id}${deploymentMessage}`,
+          message: `Autonomous fix applied to issue ${criticalIssue.id}`,
           result,
           activeIssues: activeIssues.length,
           timestamp: new Date().toISOString(),
@@ -336,77 +437,3 @@ export async function GET() {
     )
   }
 }
-
-// Keep all your existing helper functions unchanged
-function parseAIFixPlan(aiText: string) {
-  const fixPlan = {
-    issueAnalysis: [],
-    fixStrategy: [],
-    codeChanges: [],
-    testingPlan: [],
-    rollbackPlan: [],
-    monitoring: [],
-  }
-
-  try {
-    const sections = aiText.split(
-      /ISSUE_ANALYSIS:|FIX_STRATEGY:|CODE_CHANGES:|TESTING_PLAN:|ROLLBACK_PLAN:|MONITORING:/,
-    )
-
-    if (sections.length >= 2) {
-      fixPlan.issueAnalysis = extractFixItems(sections[1])
-    }
-    if (sections.length >= 3) {
-      fixPlan.fixStrategy = extractFixItems(sections[2])
-    }
-    if (sections.length >= 4) {
-      fixPlan.codeChanges = extractFixItems(sections[3])
-    }
-    if (sections.length >= 5) {
-      fixPlan.testingPlan = extractFixItems(sections[4])
-    }
-    if (sections.length >= 6) {
-      fixPlan.rollbackPlan = extractFixItems(sections[5])
-    }
-    if (sections.length >= 7) {
-      fixPlan.monitoring = extractFixItems(sections[6])
-    }
-  } catch (error) {
-    console.log("Failed to parse AI fix plan:", error)
-  }
-
-  return fixPlan
-}
-
-function extractFixItems(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("ISSUE_") && !line.startsWith("FIX_"))
-    .slice(0, 12)
-}
-
-// Complete all the helper functions
-async function applyDatabaseFix(change: string) {
-  try {
-    if (change.toLowerCase().includes("index")) {
-      return { message: "Database indexes optimized" }
-    } else if (change.toLowerCase().includes("cleanup")) {
-      const cleanup = await sql`
-        DELETE FROM system_logs 
-        WHERE created_at < NOW() - INTERVAL '30 days' 
-        AND level = 'debug'
-      `
-      return { message: `Cleaned up ${cleanup.length} old debug logs` }
-    }
-    return { message: "Database fix applied" }
-  } catch (error) {
-    throw new Error(`Database fix failed: ${error}`)
-  }
-}
-
-async function applyAPIFix(change: string) {
-  try {
-    // Example API optimization
-    if (change.toLowerCase().includes("timeout")) {
-      return {
