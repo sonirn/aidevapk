@@ -186,6 +186,9 @@ async function repackageAPKIntelligently(extractDir, outputPath, clientId, sendL
   }
 }
 
+// Define the domain constant
+const DOMAIN = "https://v0-aiapktodev.vercel.app"
+
 // Main conversion endpoint with production-grade processing
 app.post("/api/convert", upload.single("apk"), async (req, res) => {
   const clientId = req.body.clientId
@@ -290,9 +293,9 @@ app.post("/api/convert", upload.single("apk"), async (req, res) => {
     res.json({
       success: true,
       downloads: {
-        debug: `/api/download/${path.basename(debugAPKPath)}`,
-        sandbox: `/api/download/${path.basename(sandboxAPKPath)}`,
-        combined: `/api/download/${path.basename(combinedAPKPath)}`,
+        debug: `${DOMAIN}/api/download/${path.basename(debugAPKPath)}`,
+        sandbox: `${DOMAIN}/api/download/${path.basename(sandboxAPKPath)}`,
+        combined: `${DOMAIN}/api/download/${path.basename(combinedAPKPath)}`,
       },
       filenames: {
         debug: path.basename(debugAPKPath),

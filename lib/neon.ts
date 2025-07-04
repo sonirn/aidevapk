@@ -2,7 +2,7 @@ import { neon } from "@neondatabase/serverless"
 
 // Get database URL from environment variables
 const getDatabaseUrl = () => {
-  return process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL
+  return process.env.NEON_NEON_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL
 }
 
 let sql: ReturnType<typeof neon> | null = null
@@ -186,30 +186,23 @@ export class DatabaseService {
     }
     const { level, source, limit = 100, offset = 0 } = options
 
-    let whereClause = "WHERE 1=1"
+    let query = "SELECT * FROM system_logs WHERE 1=1"
     const params: any[] = []
 
     if (level) {
-      whereClause += " AND level = $" + (params.length + 1)
       params.push(level)
+      query += ` AND level = $${params.length}`
     }
 
     if (source) {
-      whereClause += " AND source = $" + (params.length + 1)
       params.push(source)
+      query += ` AND source = $${params.length}`
     }
 
-    const query = `
-      SELECT * FROM system_logs 
-      ${whereClause}
-      ORDER BY created_at DESC 
-      LIMIT $${params.length + 1} 
-      OFFSET $${params.length + 2}
-    `
-
     params.push(limit, offset)
+    query += ` ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`
 
-    const result = await db(query, ...params)
+    const result = await executeQuery(query, params)
     return result as SystemLog[]
   }
 
@@ -320,7 +313,7 @@ export class DatabaseService {
     try {
       const db = getDatabase()
       if (!db) {
-        return { status: "error", message: "Database connection not available" }
+        throw new Error("Database connection not available")
       }
       const result = await db`SELECT NOW() as timestamp`
       return {
@@ -330,6 +323,11 @@ export class DatabaseService {
     } catch (error) {
       throw new Error(`Database health check failed: ${error}`)
     }
+  }
+
+  // Add executeQuery method to DatabaseService
+  static async executeQuery(query: string, params: any[] = []) {
+    return executeQuery(query, params)
   }
 }
 

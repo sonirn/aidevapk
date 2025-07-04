@@ -1,141 +1,104 @@
 import { NextResponse } from "next/server"
-import { DatabaseService } from "@/lib/neon"
+import { neon } from "@neondatabase/serverless"
 
-export async function GET() {
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+
+export async function POST() {
   try {
-    // Replace this problematic section:
-    // const recentLogs = await DatabaseService.getSystemLogs({
-    //   limit: 100,
-    // })
-
-    // With this working version:
-    let recentLogs = []
-    try {
-      // Simple health check instead of complex log retrieval
-      await fetch(`${process.env.VERCEL_URL || "http://localhost:3000"}/api/health`)
-      recentLogs = [] // No errors found
-    } catch (error) {
-      recentLogs = [{ level: "error", message: "Health check failed" }]
-    }
+    console.log("🔍 Starting system scan...")
 
     const issues = []
 
-    // Analyze logs for errors
-    const errorLogs = recentLogs.filter((log) => log.level === "error")
-    if (errorLogs.length > 0) {
-      issues.push({
-        id: "runtime-errors",
-        type: "error",
-        title: `${errorLogs.length} Runtime Errors Detected`,
-        description: `Found ${errorLogs.length} runtime errors in the last hour`,
-        autoFixable: true,
-        fixed: false,
-        fixInProgress: false,
-        solution: "Automatically fix common runtime errors and restart services",
-      })
-    }
-
-    // Check for performance issues
-    const performanceIssue = Math.random() > 0.7 // Simulate performance detection
-    if (performanceIssue) {
-      issues.push({
-        id: "performance-slow",
-        type: "warning",
-        title: "Website Performance Degradation",
-        description: "Page load times have increased by 15% in the last hour",
-        autoFixable: true,
-        fixed: false,
-        fixInProgress: false,
-        solution: "Optimize bundle size, enable compression, and implement caching",
-      })
-    }
-
-    // Check database health
+    // Check database connection
     try {
-      await DatabaseService.healthCheck()
-    } catch (dbError) {
+      await sql`SELECT 1`
+      console.log("✅ Database connection: OK")
+    } catch (error) {
+      console.error("❌ Database connection failed:", error)
       issues.push({
-        id: "database-connection",
-        type: "error",
-        title: "Database Connection Issues",
-        description: "Database health check failed or slow response times",
-        autoFixable: true,
-        fixed: false,
-        fixInProgress: false,
-        solution: "Restart database connections and optimize queries",
+        type: "database",
+        severity: "high",
+        message: "Database connection failed",
+        details: String(error),
+        fix: "Check database credentials and connection string",
       })
     }
 
-    // Check for security vulnerabilities (simulated)
-    const securityCheck = Math.random() > 0.8
-    if (securityCheck) {
+    // Check environment variables
+    const requiredEnvVars = [
+      "NEON_DATABASE_URL",
+      "XAI_API_KEY",
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "VERCEL_ACCESS_TOKEN",
+      "VERCEL_REPO_ID",
+    ]
+
+    for (const envVar of requiredEnvVars) {
+      if (!process.env[envVar]) {
+        issues.push({
+          type: "environment",
+          severity: "medium",
+          message: `Missing environment variable: ${envVar}`,
+          details: `${envVar} is not set`,
+          fix: `Set ${envVar} in environment variables`,
+        })
+      }
+    }
+
+    // Check API endpoints
+    try {
+      const healthResponse = await fetch(`https://v0-aiapktodev.vercel.app/api/health`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (!healthResponse.ok) {
+        issues.push({
+          type: "api",
+          severity: "medium",
+          message: "Health check endpoint failed",
+          details: `Status: ${healthResponse.status}`,
+          fix: "Check API route configuration",
+        })
+      }
+    } catch (error) {
       issues.push({
-        id: "security-deps",
-        type: "warning",
-        title: "Outdated Dependencies with Security Issues",
-        description: "3 npm packages have known security vulnerabilities",
-        autoFixable: true,
-        fixed: false,
-        fixInProgress: false,
-        solution: "Update vulnerable packages to latest secure versions",
+        type: "api",
+        severity: "medium",
+        message: "Health check endpoint unreachable",
+        details: String(error),
+        fix: "Check network connectivity and API routes",
       })
     }
 
-    // Check for UI/UX issues (simulated)
-    const uiCheck = Math.random() > 0.6
-    if (uiCheck) {
-      issues.push({
-        id: "ui-responsive",
-        type: "info",
-        title: "Mobile Responsiveness Issues",
-        description: "Some components are not properly responsive on mobile devices",
-        autoFixable: true,
-        fixed: false,
-        fixInProgress: false,
-        solution: "Fix responsive design issues and improve mobile experience",
-      })
+    // Log scan results
+    try {
+      await sql`
+        INSERT INTO system_logs (level, message, source, metadata, created_at)
+        VALUES ('info', 'System scan completed', 'auto-fix-scan', ${JSON.stringify({ issuesFound: issues.length })}, NOW())
+      `
+    } catch (logError) {
+      console.log("Failed to log scan results:", logError)
     }
-
-    // Replace:
-    // await DatabaseService.createSystemLog({
-    //   level: "info",
-    //   message: `Website scan completed: ${issues.length} issues detected`,
-    //   source: "auto-scan",
-    //   metadata: { issueCount: issues.length, issues: issues.map((i) => i.id) },
-    // })
-
-    // With:
-    console.log(`Website scan completed: ${issues.length} issues detected`)
 
     return NextResponse.json({
       success: true,
       issues,
-      timestamp: new Date().toISOString(),
-      scanDuration: "1.8s",
       summary: {
         total: issues.length,
-        errors: issues.filter((i) => i.type === "error").length,
-        warnings: issues.filter((i) => i.type === "warning").length,
-        info: issues.filter((i) => i.type === "info").length,
+        high: issues.filter((i) => i.severity === "high").length,
+        medium: issues.filter((i) => i.severity === "medium").length,
+        low: issues.filter((i) => i.severity === "low").length,
       },
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
-    // Replace:
-    // await DatabaseService.createSystemLog({
-    //   level: "error",
-    //   message: `Website scan failed: ${error}`,
-    //   source: "auto-scan",
-    //   metadata: { error: String(error) },
-    // })
-
-    // With:
-    console.error("Website scan failed:", error)
-
+    console.error("Scan error:", error)
     return NextResponse.json(
       {
         success: false,
-        error: "Website scan failed",
-        issues: [],
+        error: error instanceof Error ? error.message : "Scan failed",
       },
       { status: 500 },
     )
