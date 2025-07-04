@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_DATABASE_URL!)
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 // Security configuration
 const ALLOWED_ORIGINS = [
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       VERCEL_ACCESS_TOKEN: process.env.VERCEL_ACCESS_TOKEN,
       VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
       GITHUB_REPO_ID: process.env.GITHUB_REPO_ID,
-      NEON_DATABASE_URL: process.env.NEON_DATABASE_URL
+      NEON_NEON_DATABASE_URL: process.env.NEON_NEON_DATABASE_URL
     }
 
     const missingVars = Object.entries(requiredEnvVars)
