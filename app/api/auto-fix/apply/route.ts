@@ -398,4 +398,3 @@ async function logError(error: unknown) {
     console.log("Failed to log apply error:", logError)
   }
     }
-
