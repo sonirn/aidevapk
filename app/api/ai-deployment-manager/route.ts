@@ -3,7 +3,11 @@ import { generateText } from "ai"
 import { xai } from "@ai-sdk/xai"
 import { neon } from "@neondatabase/serverless"
 
-const sql = neon(process.env.NEON_NEON_NEON_NEON_NEON_DATABASE_URL!)
+// Direct database connection - no environment variables
+const NEON_NEON_DATABASE_URL =
+  "postgres://neondb_owner:npg_z0pMl7xBowTN@ep-lively-silence-adxk103r-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
+const sql = neon(NEON_DATABASE_URL)
 
 export async function POST(request: Request) {
   try {
@@ -173,7 +177,7 @@ async function executeDeploymentPlan(deploymentPlan: any, action: string, contex
             results.preDeploymentResults.push("⚠️ API endpoints need attention")
           }
         } else if (check.toLowerCase().includes("environment")) {
-          const requiredVars = ["NEON_NEON_NEON_NEON_DATABASE_URL", "XAI_API_KEY"]
+          const requiredVars = ["XAI_API_KEY"]
           const missingVars = requiredVars.filter((varName) => !process.env[varName])
           if (missingVars.length === 0) {
             results.preDeploymentResults.push("✅ Environment variables verified")
