@@ -23,7 +23,7 @@ export async function POST() {
     }
 
     // Check environment variables
-    const requiredEnvVars = ["NEON_NEON_NEON_DATABASE_URL", "XAI_API_KEY"]
+    const requiredEnvVars = ["NEON_NEON_DATABASE_URL", "XAI_API_KEY"]
     for (const envVar of requiredEnvVars) {
       if (process.env[envVar]) {
         preDeploymentChecks.push(`✅ ${envVar} configured`)
