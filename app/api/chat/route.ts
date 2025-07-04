@@ -146,7 +146,7 @@ Would you like me to help troubleshoot a specific error message?`
 export async function GET() {
   return NextResponse.json({
     status: "AI Chat API is running",
-    domain: "v0-newdev1-4y.vercel.app",
+    domain: "v0-aiapktodev.vercel.app",
     features: ["APK Conversion Help", "Android Development", "Technical Support"],
     xai_available: !!process.env.XAI_API_KEY,
   })
