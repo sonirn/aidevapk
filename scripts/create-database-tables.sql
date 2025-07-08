@@ -13,6 +13,13 @@ CREATE TABLE IF NOT EXISTS conversions (
     metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- Create status_checks table for tracking API status checks (migrated from backend)
+CREATE TABLE IF NOT EXISTS status_checks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_name TEXT NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_conversions_session_id ON conversions(session_id);
 CREATE INDEX IF NOT EXISTS idx_conversions_status ON conversions(status);
