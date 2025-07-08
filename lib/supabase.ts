@@ -32,6 +32,12 @@ export interface Conversion {
   error_message?: string
 }
 
+export interface StatusCheck {
+  id: string
+  client_name: string
+  timestamp: string
+}
+
 // Helper functions
 export async function uploadFile(bucket: string, path: string, file: File | Buffer) {
   const { data, error } = await supabaseAdmin.storage.from(bucket).upload(path, file, {
