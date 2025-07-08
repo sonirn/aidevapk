@@ -25,6 +25,10 @@ CREATE INDEX IF NOT EXISTS idx_conversions_session_id ON conversions(session_id)
 CREATE INDEX IF NOT EXISTS idx_conversions_status ON conversions(status);
 CREATE INDEX IF NOT EXISTS idx_conversions_expires_at ON conversions(expires_at);
 
+-- Create index for status_checks
+CREATE INDEX IF NOT EXISTS idx_status_checks_timestamp ON status_checks(timestamp);
+CREATE INDEX IF NOT EXISTS idx_status_checks_client_name ON status_checks(client_name);
+
 -- Create storage bucket for APK files (run this in Supabase SQL editor)
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('apk-files', 'apk-files', false)
