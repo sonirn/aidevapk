@@ -37,8 +37,14 @@ ON CONFLICT (id) DO NOTHING;
 -- Set up RLS policies for the conversions table
 ALTER TABLE conversions ENABLE ROW LEVEL SECURITY;
 
+-- Set up RLS policies for the status_checks table
+ALTER TABLE status_checks ENABLE ROW LEVEL SECURITY;
+
 -- Allow all operations for service role (used by API)
 CREATE POLICY "Allow service role full access" ON conversions
+FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Allow service role full access to status_checks" ON status_checks
 FOR ALL USING (auth.role() = 'service_role');
 
 -- Set up storage policies for APK files
