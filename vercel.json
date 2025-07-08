@@ -1,0 +1,17 @@
+{
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "functions": {
+    "app/api/convert/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/auto-cleanup/route.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/auto-cleanup",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
