@@ -87,3 +87,29 @@ export async function getConversion(sessionId: string) {
   if (error) throw error
   return data
 }
+
+// StatusCheck operations
+export async function createStatusCheck(statusCheck: { client_name: string }) {
+  const { data, error } = await supabaseAdmin
+    .from("status_checks")
+    .insert({
+      id: crypto.randomUUID(),
+      client_name: statusCheck.client_name,
+      timestamp: new Date().toISOString()
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getStatusChecks() {
+  const { data, error } = await supabaseAdmin
+    .from("status_checks")
+    .select("*")
+    .order("timestamp", { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
